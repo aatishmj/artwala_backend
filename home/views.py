@@ -6,7 +6,6 @@ from rest_framework import generics, permissions
 from .models import *
 from .serializers import RegisterSerializer, ArtworkSerializer, OrderSerializer
 from rest_framework_simplejwt.views import TokenObtainPairView
-
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -14,7 +13,6 @@ from home.serializers import UserSerializer  # We'll define this next
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
-
 
 
 class UserProfileView(APIView):
