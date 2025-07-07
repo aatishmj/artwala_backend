@@ -7,9 +7,16 @@ from rest_framework import serializers
 from home.models import User
 
 class UserSerializer(serializers.ModelSerializer):
+    full_name = serializers.ReadOnlyField()
+    
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'user_type', 'phone']
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
+            'user_type', 'phone', 'profile_image', 'bio', 'location', 'website',
+            'instagram_handle', 'twitter_handle', 'is_verified', 'artist_since',
+            'date_joined'
+        ]
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -69,3 +76,30 @@ class CommentSerializer(serializers.ModelSerializer):
         model = Comment
         fields = ['id', 'user', 'artwork', 'content', 'created_at', 'username']
         read_only_fields = ['id', 'created_at', 'username']
+
+class ProfileSerializer(serializers.ModelSerializer):
+    full_name = serializers.ReadOnlyField()
+    stats = serializers.ReadOnlyField(source='get_stats')
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
+            'user_type', 'phone', 'profile_image', 'bio', 'location', 'website',
+            'instagram_handle', 'twitter_handle', 'is_verified', 'artist_since',
+            'date_joined', 'stats'
+        ]
+        read_only_fields = ['id', 'username', 'email', 'user_type', 'date_joined', 'is_verified']
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = [
+            'first_name', 'last_name', 'phone', 'bio', 'location', 'website',
+            'instagram_handle', 'twitter_handle'
+        ]
+
+class ProfileImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['profile_image']

@@ -4,12 +4,18 @@ from django.shortcuts import render
 # views.py
 from rest_framework import generics, permissions
 from .models import *
-from .serializers import RegisterSerializer, ArtworkSerializer, OrderSerializer
+from .serializers import (
+    RegisterSerializer, ArtworkSerializer, OrderSerializer, UserSerializer,
+    ProfileSerializer, ProfileUpdateSerializer, ProfileImageSerializer,
+    FollowSerializer, LikeSerializer, CommentSerializer
+)
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
 from home.serializers import UserSerializer  # We'll define this next
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
@@ -33,14 +39,24 @@ User = get_user_model()
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        email = attrs.get("email")
+        # Support both email and username login
+        username_or_email = attrs.get("username")
         password = attrs.get("password")
 
+        if not username_or_email:
+            raise serializers.ValidationError("Username or email is required")
+
         try:
-            user = User.objects.get(email=email)
+            # Try to find user by email first, then by username
+            if '@' in username_or_email:
+                user = User.objects.get(email=username_or_email)
+            else:
+                user = User.objects.get(username=username_or_email)
+            
+            # Set the username for JWT validation
             attrs["username"] = user.username
         except User.DoesNotExist:
-            raise serializers.ValidationError("Invalid email or password")
+            raise serializers.ValidationError("Invalid credentials")
 
         return super().validate(attrs)
 
@@ -101,6 +117,48 @@ class OrderCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
 
+# Profile Views
+class ProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        """Get current user's profile"""
+        serializer = ProfileSerializer(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        """Update current user's profile"""
+        serializer = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            # Return updated profile
+            profile_serializer = ProfileSerializer(request.user)
+            return Response(profile_serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class ProfileImageView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        """Upload profile image"""
+        serializer = ProfileImageSerializer(request.user, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            profile_serializer = ProfileSerializer(request.user)
+            return Response(profile_serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class PublicProfileView(APIView):
+    """View public profile of any user/artist"""
+    
+    def get(self, request, user_id):
+        try:
+            user = User.objects.get(id=user_id)
+            serializer = ProfileSerializer(user)
+            return Response(serializer.data)
+        except User.DoesNotExist:
+            return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+
 # views.py
 
 from rest_framework import generics, permissions
@@ -134,3 +192,15 @@ class CommentListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         artwork_id = self.kwargs['artwork_id']
         serializer.save(user=self.request.user, artwork_id=artwork_id)
+
+# Logout endpoint
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    try:
+        refresh_token = request.data["refresh"]
+        token = RefreshToken(refresh_token)
+        token.blacklist()
+        return Response({"message": "Logout successful"}, status=200)
+    except Exception as e:
+        return Response({"error": "Invalid token"}, status=400)

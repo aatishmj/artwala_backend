@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/3.1/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -125,6 +126,10 @@ USE_TZ = True
 
 STATIC_URL = '/static/'
 
+# Media files (uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
 #--------------------new--------------------------
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
@@ -133,16 +138,28 @@ REST_FRAMEWORK = {
 }
 
 
+# Commented out PostgreSQL config
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.postgresql',
+#         'NAME': 'art_walaa',
+#         'USER': 'aatish',
+#         'PASSWORD': 'jawalkar1234',
+#         'HOST': 'localhost',
+#         'PORT': '5432',
+#     }
+# }
+
+# SQLite configuration
+import os
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'art_walaa',
-        'USER': 'aatish',
-        'PASSWORD': 'jawalkar1234',
-        'HOST': 'localhost',
-        'PORT': '5432',
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
     }
 }
+
 
 AUTH_USER_MODEL = 'home.User'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
