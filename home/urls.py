@@ -27,4 +27,5 @@ urlpatterns = [
     path('api/like/', LikeView.as_view(), name='like'),
     path('api/artwork/<int:artwork_id>/comments/', CommentListCreateView.as_view(), name='comments'),
     path('api/artist/dashboard/', ArtistDashboardView.as_view(), name='artist_dashboard'),
+    
 ]
