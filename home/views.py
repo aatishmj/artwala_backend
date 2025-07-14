@@ -4,7 +4,9 @@ from django.shortcuts import render
 # views.py
 from rest_framework import generics, permissions
 from .models import *
+
 from .serializers import *
+
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -173,9 +175,46 @@ class PublicProfileView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
+# New User Statistics API endpoint
+class UserStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, user_id=None):
+        """
+        Get comprehensive user statistics
+        If user_id is not provided, returns stats for the authenticated user
+        """
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            user = request.user
+            
+        serializer = UserStatsSerializer(user)
+        return Response(serializer.data)
+
+# Enhanced Profile Update with statistics
+class ProfileUpdateView(generics.UpdateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_object(self):
+        return self.request.user
+    
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        # Add updated profile completion percentage
+        user = self.get_object()
+        response.data['profile_completion'] = user.calculate_profile_completion()
+        return response
+
 # views.py
 
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
+from rest_framework.views import APIView
 from .models import Follow, Like, Comment
 from .serializers import FollowSerializer, LikeSerializer, CommentSerializer
 

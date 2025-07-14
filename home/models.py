@@ -37,21 +37,85 @@ class User(AbstractUser):
         return f"{self.first_name} {self.last_name}".strip() or self.username
     
     def get_stats(self):
-        """Calculate user/artist stats"""
+        """Calculate comprehensive user/artist stats"""
+        from django.db.models import Sum, Count
+        
         if self.user_type == 'artist':
+            # Calculate total views for artist's artworks (once view_count is added)
+            total_views = 0  # Will be: self.artworks.aggregate(Sum('view_count'))['view_count__sum'] or 0
+            
+            # Calculate total likes received on artist's artworks
+            total_likes_received = Like.objects.filter(artwork__artist=self).count()
+            
+            # Calculate completed orders for revenue
+            completed_orders = Order.objects.filter(
+                artwork__artist=self, 
+                status='delivered'
+            )
+            
+            # Calculate total revenue from completed transactions
+            total_revenue = Transaction.objects.filter(
+                order__in=completed_orders
+            ).aggregate(Sum('amount'))['amount__sum'] or 0
+            
             return {
-                'artworks': self.artworks.count(),
-                'followers': self.followers.count(),
-                'following': self.following.count(),
-                'total_sales': self.artworks.filter(order__status='delivered').count(),
+                'artworks_count': self.artworks.count(),
+                'followers_count': self.followers.count(),
+                'following_count': self.following.count(),
+                'total_likes_received': total_likes_received,
+                'total_views': total_views,
+                'total_sales': completed_orders.count(),
+                'total_revenue': float(total_revenue),
+                'profile_completion': self.calculate_profile_completion(),
             }
         else:
             return {
-                'following': self.following.count(),
-                'followers': self.followers.count(),
+                'following_count': self.following.count(),
+                'followers_count': self.followers.count(),
                 'likes_given': self.like_set.count(),
                 'saved_artworks': self.wishlist.count(),
+                'orders_count': self.orders.count(),
+                'profile_completion': self.calculate_profile_completion(),
             }
+
+    def calculate_profile_completion(self):
+        """Calculate profile completion percentage"""
+        total_fields = 0
+        completed_fields = 0
+        
+        # Basic fields (for all users)
+        basic_fields = [
+            self.first_name,
+            self.last_name,
+            self.bio,
+            self.location,
+            self.profile_image,
+        ]
+        
+        for field in basic_fields:
+            total_fields += 1
+            if field:
+                completed_fields += 1
+        
+        # Artist-specific fields
+        if self.user_type == 'artist':
+            artist_fields = [
+                self.website,
+                self.instagram_handle,
+                self.twitter_handle,
+                self.artist_since,
+            ]
+            
+            for field in artist_fields:
+                total_fields += 1
+                if field:
+                    completed_fields += 1
+        
+        # Calculate percentage
+        if total_fields == 0:
+            return 0
+        
+        return round((completed_fields / total_fields) * 100)
 
 
 

@@ -16,7 +16,12 @@ urlpatterns = [
     # Profile
     path('api/profile/', ProfileView.as_view(), name='profile'),
     path('api/profile/image/', ProfileImageView.as_view(), name='profile_image'),
+    path('api/profile/update/', ProfileUpdateView.as_view(), name='profile_update'),
     path('api/profile/<int:user_id>/', PublicProfileView.as_view(), name='public_profile'),
+    
+    # User Statistics
+    path('api/user/stats/', UserStatsView.as_view(), name='user_stats'),
+    path('api/user/<int:user_id>/stats/', UserStatsView.as_view(), name='user_stats_by_id'),
     
     # Legacy profile endpoint (keeping for compatibility)
     path('api/user/profile/', UserProfileView.as_view(), name='user_profile_legacy'),

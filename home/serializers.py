@@ -105,6 +105,7 @@ class ProfileImageSerializer(serializers.ModelSerializer):
         fields = ['profile_image']
 
 
+
 #---------------------Wishlist---------------------------------
 
 from rest_framework import serializers
@@ -116,3 +117,18 @@ class WishlistSerializer(serializers.ModelSerializer):
     class Meta:
         model = Wishlist
         fields = ['id', 'artwork', 'added_on']
+
+class UserStatsSerializer(serializers.ModelSerializer):
+    """Serializer specifically for user statistics endpoint"""
+    full_name = serializers.ReadOnlyField()
+    stats = serializers.ReadOnlyField(source='get_stats')
+    profile_completion = serializers.ReadOnlyField(source='calculate_profile_completion')
+    
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'full_name', 'user_type', 'bio', 'location',
+            'profile_image', 'date_joined', 'last_login', 'stats', 'profile_completion'
+        ]
+        read_only_fields = fields  # All fields are read-only for stats endpoint
+
