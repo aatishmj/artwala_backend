@@ -4,11 +4,7 @@ from django.shortcuts import render
 # views.py
 from rest_framework import generics, permissions
 from .models import *
-from .serializers import (
-    RegisterSerializer, ArtworkSerializer, OrderSerializer, UserSerializer,
-    ProfileSerializer, ProfileUpdateSerializer, ProfileImageSerializer,
-    FollowSerializer, LikeSerializer, CommentSerializer
-)
+from .serializers import *
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
@@ -222,3 +218,50 @@ def logout_view(request):
         return Response({"message": "Logout successful"}, status=200)
     except Exception as e:
         return Response({"error": "Invalid token"}, status=400)
+
+
+
+
+
+
+class WishlistView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        wishlist = Wishlist.objects.filter(user=request.user).select_related('artwork')
+        serializer = WishlistSerializer(wishlist, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        artwork_id = request.data.get('artwork_id')
+        if not artwork_id:
+            return Response({"error": "artwork_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            artwork = Artwork.objects.get(id=artwork_id)
+        except Artwork.DoesNotExist:
+            return Response({"error": "Artwork not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        wishlist_item, created = Wishlist.objects.get_or_create(user=request.user, artwork=artwork)
+        if not created:
+            return Response({"message": "Already in wishlist"}, status=status.HTTP_200_OK)
+
+        serializer = WishlistSerializer(wishlist_item)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def delete(self, request):
+        artwork_id = request.data.get('artwork_id')
+        if not artwork_id:
+            return Response({"error": "artwork_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            artwork = Artwork.objects.get(id=artwork_id)
+        except Artwork.DoesNotExist:
+            return Response({"error": "Artwork not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            wishlist_item = Wishlist.objects.get(user=request.user, artwork=artwork)
+            wishlist_item.delete()
+            return Response({"message": "Removed from wishlist"}, status=status.HTTP_204_NO_CONTENT)
+        except Wishlist.DoesNotExist:
+            return Response({"error": "Item not found in wishlist"}, status=status.HTTP_404_NOT_FOUND)

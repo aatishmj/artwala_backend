@@ -103,3 +103,16 @@ class ProfileImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['profile_image']
+
+
+#---------------------Wishlist---------------------------------
+
+from rest_framework import serializers
+from .models import Wishlist
+
+class WishlistSerializer(serializers.ModelSerializer):
+    artwork = ArtworkSerializer(read_only=True)
+
+    class Meta:
+        model = Wishlist
+        fields = ['id', 'artwork', 'added_on']
