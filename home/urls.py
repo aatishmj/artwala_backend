@@ -2,8 +2,8 @@
 from django.urls import path
 from .views import *
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenVerifyView
-
-
+from django.conf import settings
+from django.conf.urls.static import static
 
 urlpatterns = [
     # Auth
@@ -34,5 +34,10 @@ urlpatterns = [
     path('api/artwork/<int:artwork_id>/comments/', CommentListCreateView.as_view(), name='comments'),
     path('api/artist/dashboard/', ArtistDashboardView.as_view(), name='artist_dashboard'),
     path('api/wishlist/', WishlistView.as_view(), name='wishlist'),
+    path('api/wishlist/<int:artwork_id>/', WishlistItemDeleteView.as_view(), name='wishlist-detail')
+
 
 ]
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+

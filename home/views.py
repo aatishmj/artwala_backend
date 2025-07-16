@@ -259,10 +259,6 @@ def logout_view(request):
         return Response({"error": "Invalid token"}, status=400)
 
 
-
-
-
-
 class WishlistView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -287,12 +283,11 @@ class WishlistView(APIView):
 
         serializer = WishlistSerializer(wishlist_item)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+class WishlistItemDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
 
-    def delete(self, request):
-        artwork_id = request.data.get('artwork_id')
-        if not artwork_id:
-            return Response({"error": "artwork_id is required"}, status=status.HTTP_400_BAD_REQUEST)
-
+    def delete(self, request, artwork_id):
         try:
             artwork = Artwork.objects.get(id=artwork_id)
         except Artwork.DoesNotExist:
@@ -301,6 +296,6 @@ class WishlistView(APIView):
         try:
             wishlist_item = Wishlist.objects.get(user=request.user, artwork=artwork)
             wishlist_item.delete()
-            return Response({"message": "Removed from wishlist"}, status=status.HTTP_204_NO_CONTENT)
+            return Response({"message": "Removed from wishlist"}, status=status.HTTP_200_OK)
         except Wishlist.DoesNotExist:
             return Response({"error": "Item not found in wishlist"}, status=status.HTTP_404_NOT_FOUND)
