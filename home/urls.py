@@ -33,10 +33,14 @@ urlpatterns = [
     path('api/like/', LikeView.as_view(), name='like'),
     path('api/artwork/<int:artwork_id>/comments/', CommentListCreateView.as_view(), name='comments'),
     path('api/artist/dashboard/', ArtistDashboardView.as_view(), name='artist_dashboard'),
+<<<<<<< HEAD
     path('api/wishlist/', WishlistView.as_view(), name='wishlist'),
     path('api/wishlist/<int:artwork_id>/', WishlistItemDeleteView.as_view(), name='wishlist-detail')
 
 
+=======
+    
+>>>>>>> origin
 ]
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
