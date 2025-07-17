@@ -17,6 +17,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from django.db import models
 
 
 class UserProfileView(APIView):
@@ -210,6 +211,48 @@ class ProfileUpdateView(generics.UpdateAPIView):
         user = self.get_object()
         response.data['profile_completion'] = user.calculate_profile_completion()
         return response
+
+# Artist Recommendations API
+class ArtistRecommendationsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get recommended artists for dashboard"""
+        # Get trending artists (those with most followers/recent activity)
+        trending_artists = User.objects.filter(
+            user_type='artist',
+            is_verified=True
+        ).exclude(
+            id=request.user.id  # Exclude current user
+        ).annotate(
+            follower_count=models.Count('followers')
+        ).order_by('-follower_count', '-date_joined')[:6]
+        
+        # Get new artists (recently joined)
+        new_artists = User.objects.filter(
+            user_type='artist'
+        ).exclude(
+            id=request.user.id
+        ).order_by('-date_joined')[:4]
+        
+        # Serialize the data
+        trending_serializer = ProfileSerializer(trending_artists, many=True)
+        new_serializer = ProfileSerializer(new_artists, many=True)
+        
+        return Response({
+            'trending_artists': trending_serializer.data,
+            'new_artists': new_serializer.data,
+            'recommended_count': len(trending_artists) + len(new_artists)
+        })
+
+# Profile Completion Details API
+class ProfileCompletionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get detailed profile completion information"""
+        completion_data = request.user.calculate_profile_completion()
+        return Response(completion_data)
 
 # views.py
 
