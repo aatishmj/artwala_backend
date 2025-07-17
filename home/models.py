@@ -79,43 +79,70 @@ class User(AbstractUser):
             }
 
     def calculate_profile_completion(self):
-        """Calculate profile completion percentage"""
-        total_fields = 0
-        completed_fields = 0
+        """Calculate profile completion percentage with detailed breakdown"""
+        completion_data = {
+            'percentage': 0,
+            'completed_fields': [],
+            'missing_fields': [],
+            'total_fields': 0,
+            'completed_count': 0
+        }
         
         # Basic fields (for all users)
-        basic_fields = [
-            self.first_name,
-            self.last_name,
-            self.bio,
-            self.location,
-            self.profile_image,
+        basic_field_checks = [
+            ('first_name', 'First Name', self.first_name),
+            ('last_name', 'Last Name', self.last_name),
+            ('bio', 'Bio', self.bio),
+            ('location', 'Location', self.location),
+            ('profile_image', 'Profile Image', self.profile_image),
         ]
         
-        for field in basic_fields:
-            total_fields += 1
-            if field:
-                completed_fields += 1
+        for field_name, field_label, field_value in basic_field_checks:
+            completion_data['total_fields'] += 1
+            if field_value:
+                completion_data['completed_count'] += 1
+                completion_data['completed_fields'].append({
+                    'field': field_name,
+                    'label': field_label
+                })
+            else:
+                completion_data['missing_fields'].append({
+                    'field': field_name,
+                    'label': field_label
+                })
         
         # Artist-specific fields
         if self.user_type == 'artist':
-            artist_fields = [
-                self.website,
-                self.instagram_handle,
-                self.twitter_handle,
-                self.artist_since,
+            artist_field_checks = [
+                ('website', 'Website', self.website),
+                ('instagram_handle', 'Instagram Handle', self.instagram_handle),
+                ('twitter_handle', 'Twitter Handle', self.twitter_handle),
+                ('artist_since', 'Artist Since', self.artist_since),
             ]
             
-            for field in artist_fields:
-                total_fields += 1
-                if field:
-                    completed_fields += 1
+            for field_name, field_label, field_value in artist_field_checks:
+                completion_data['total_fields'] += 1
+                if field_value:
+                    completion_data['completed_count'] += 1
+                    completion_data['completed_fields'].append({
+                        'field': field_name,
+                        'label': field_label
+                    })
+                else:
+                    completion_data['missing_fields'].append({
+                        'field': field_name,
+                        'label': field_label
+                    })
         
         # Calculate percentage
-        if total_fields == 0:
-            return 0
+        if completion_data['total_fields'] == 0:
+            completion_data['percentage'] = 0
+        else:
+            completion_data['percentage'] = round(
+                (completion_data['completed_count'] / completion_data['total_fields']) * 100
+            )
         
-        return round((completed_fields / total_fields) * 100)
+        return completion_data
 
 
 

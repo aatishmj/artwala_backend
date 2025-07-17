@@ -23,6 +23,12 @@ urlpatterns = [
     path('api/user/stats/', UserStatsView.as_view(), name='user_stats'),
     path('api/user/<int:user_id>/stats/', UserStatsView.as_view(), name='user_stats_by_id'),
     
+    # Profile Completion Details
+    path('api/profile/completion/', ProfileCompletionView.as_view(), name='profile_completion'),
+    
+    # Artist Recommendations
+    path('api/artists/recommendations/', ArtistRecommendationsView.as_view(), name='artist_recommendations'),
+    
     # Legacy profile endpoint (keeping for compatibility)
     path('api/user/profile/', UserProfileView.as_view(), name='user_profile_legacy'),
 
