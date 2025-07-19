@@ -54,6 +54,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+db.sqlite3
 # Migration files (optional - you might want to keep these)
 # */migrations/0*.py
