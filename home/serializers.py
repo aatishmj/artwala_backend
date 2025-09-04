@@ -44,9 +44,33 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class ArtworkSerializer(serializers.ModelSerializer):
+    artist = serializers.ReadOnlyField(source='artist.id')
+    description = serializers.CharField(allow_blank=True, required=False)
+    price = serializers.DecimalField(max_digits=8, decimal_places=2, required=False)
+
     class Meta:
         model = Artwork
-        fields = '__all__'
+        fields = ['id','title','description','price','stock','image','video','artist','created_at']
+        read_only_fields = ['id','artist','created_at']
+
+    def validate_price(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError('Price must be non-negative')
+        return value
+
+    def create(self, validated_data):
+        if 'price' not in validated_data:
+            validated_data['price'] = 0
+        if 'description' not in validated_data:
+            validated_data['description'] = ''
+        return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        if 'price' in validated_data and validated_data['price'] is None:
+            validated_data['price'] = 0
+        if 'description' in validated_data and validated_data['description'] is None:
+            validated_data['description'] = ''
+        return super().update(instance, validated_data)
 
 class OrderSerializer(serializers.ModelSerializer):
     class Meta:

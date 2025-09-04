@@ -124,9 +124,36 @@ class RegisterView(generics.CreateAPIView):
 
 
 class ArtworkListCreateView(generics.ListCreateAPIView):
+    queryset = Artwork.objects.all().order_by('-created_at')
+    serializer_class = ArtworkSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        artist_id = self.request.query_params.get('artist')
+        if artist_id and artist_id.isdigit():
+            qs = qs.filter(artist_id=artist_id)
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not user.is_authenticated:
+            raise serializers.ValidationError('Authentication required')
+        if getattr(user, 'user_type', None) != 'artist':
+            raise serializers.ValidationError('Only artist accounts can upload artworks')
+        serializer.save(artist=user)
+
+class ArtworkDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Artwork.objects.all()
     serializer_class = ArtworkSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def check_object_permissions(self, request, obj):
+        # Only the artist owner may modify
+        if request.method in ('PUT','PATCH','DELETE'):
+            if not request.user.is_authenticated or obj.artist_id != request.user.id:
+                raise serializers.ValidationError('Not permitted to modify this artwork')
+        return super().check_object_permissions(request, obj)
 
 class OrderCreateView(generics.CreateAPIView):
     queryset = Order.objects.all()

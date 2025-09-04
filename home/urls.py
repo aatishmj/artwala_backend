@@ -34,6 +34,7 @@ urlpatterns = [
 
     # API
     path('api/artworks/', ArtworkListCreateView.as_view(), name='artwork_list_create'),
+    path('api/artworks/<int:pk>/', ArtworkDetailView.as_view(), name='artwork_detail'),
     path('api/orders/', OrderCreateView.as_view(), name='order_create'),
     path('api/follow/', FollowView.as_view(), name='follow'),
     path('api/like/', LikeView.as_view(), name='like'),
