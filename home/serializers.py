@@ -73,9 +73,13 @@ class ArtworkSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 class OrderSerializer(serializers.ModelSerializer):
+    artwork = serializers.PrimaryKeyRelatedField(queryset=Artwork.objects.all())
+    quantity = serializers.IntegerField(min_value=1, required=False, default=1)
+
     class Meta:
         model = Order
-        fields = '__all__'
+        fields = ['id', 'artwork', 'buyer', 'quantity', 'status', 'created_at']
+        read_only_fields = ['id', 'buyer', 'status', 'created_at']
 # serializers.py
 
 from rest_framework import serializers

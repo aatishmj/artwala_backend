@@ -160,6 +160,10 @@ class OrderCreateView(generics.CreateAPIView):
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def perform_create(self, serializer):
+        # Ensure the authenticated user is set as the buyer
+        serializer.save(buyer=self.request.user)
+
 
 # Profile Views
 class ProfileView(APIView):
