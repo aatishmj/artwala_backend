@@ -4,21 +4,20 @@ from django.shortcuts import render
 # views.py
 from rest_framework import generics, permissions
 from .models import *
-from .serializers import (
-    RegisterSerializer, ArtworkSerializer, OrderSerializer, UserSerializer,
-    ProfileSerializer, ProfileUpdateSerializer, ProfileImageSerializer,
-    FollowSerializer, LikeSerializer, CommentSerializer
-)
+
+from .serializers import *
+
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated ,AllowAny
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
+from django.db import models
 
 
 class UserProfileView(APIView):
@@ -56,7 +55,15 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         except User.DoesNotExist:
             raise serializers.ValidationError("Invalid credentials")
 
-        return super().validate(attrs)
+        # Get the token data
+        data = super().validate(attrs)
+        
+        # Add user data to response
+        user_serializer = UserSerializer(self.user)
+        data['user'] = user_serializer.data
+        data['message'] = 'Login successful'
+        
+        return data
 
 # replace view
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -98,21 +105,64 @@ class RegisterView(generics.CreateAPIView):
         print("Incoming data:", request.data)  # 🔍 Log data
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            self.perform_create(serializer)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            user = serializer.save()
+            
+            # Generate JWT tokens for the new user
+            refresh = RefreshToken.for_user(user)
+            access = refresh.access_token
+            
+            # Return user data with tokens
+            user_serializer = UserSerializer(user)
+            return Response({
+                'user': user_serializer.data,
+                'access': str(access),
+                'refresh': str(refresh),
+                'message': 'Registration successful'
+            }, status=status.HTTP_201_CREATED)
         print("Serializer errors:", serializer.errors)  # 🔍 Log errors
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ArtworkListCreateView(generics.ListCreateAPIView):
+    queryset = Artwork.objects.all().order_by('-created_at')
+    serializer_class = ArtworkSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        artist_id = self.request.query_params.get('artist')
+        if artist_id and artist_id.isdigit():
+            qs = qs.filter(artist_id=artist_id)
+        return qs
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        if not user.is_authenticated:
+            raise serializers.ValidationError('Authentication required')
+        if getattr(user, 'user_type', None) != 'artist':
+            raise serializers.ValidationError('Only artist accounts can upload artworks')
+        serializer.save(artist=user)
+
+class ArtworkDetailView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Artwork.objects.all()
     serializer_class = ArtworkSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+    def check_object_permissions(self, request, obj):
+        # Only the artist owner may modify
+        if request.method in ('PUT','PATCH','DELETE'):
+            if not request.user.is_authenticated or obj.artist_id != request.user.id:
+                raise serializers.ValidationError('Not permitted to modify this artwork')
+        return super().check_object_permissions(request, obj)
 
 class OrderCreateView(generics.CreateAPIView):
     queryset = Order.objects.all()
     serializer_class = OrderSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        # Ensure the authenticated user is set as the buyer
+        serializer.save(buyer=self.request.user)
 
 
 # Profile Views
@@ -157,9 +207,88 @@ class PublicProfileView(APIView):
         except User.DoesNotExist:
             return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
+# New User Statistics API endpoint
+class UserStatsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, user_id=None):
+        """
+        Get comprehensive user statistics
+        If user_id is not provided, returns stats for the authenticated user
+        """
+        if user_id:
+            try:
+                user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                return Response({"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            user = request.user
+            
+        serializer = UserStatsSerializer(user)
+        return Response(serializer.data)
+
+# Enhanced Profile Update with statistics
+class ProfileUpdateView(generics.UpdateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_object(self):
+        return self.request.user
+    
+    def update(self, request, *args, **kwargs):
+        response = super().update(request, *args, **kwargs)
+        # Add updated profile completion percentage
+        user = self.get_object()
+        response.data['profile_completion'] = user.calculate_profile_completion()
+        return response
+
+# Artist Recommendations API
+class ArtistRecommendationsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get recommended artists for dashboard"""
+        # Get trending artists (those with most followers/recent activity)
+        trending_artists = User.objects.filter(
+            user_type='artist',
+            is_verified=True
+        ).exclude(
+            id=request.user.id  # Exclude current user
+        ).annotate(
+            follower_count=models.Count('followers')
+        ).order_by('-follower_count', '-date_joined')[:6]
+        
+        # Get new artists (recently joined)
+        new_artists = User.objects.filter(
+            user_type='artist'
+        ).exclude(
+            id=request.user.id
+        ).order_by('-date_joined')[:4]
+        
+        # Serialize the data
+        trending_serializer = ProfileSerializer(trending_artists, many=True)
+        new_serializer = ProfileSerializer(new_artists, many=True)
+        
+        return Response({
+            'trending_artists': trending_serializer.data,
+            'new_artists': new_serializer.data,
+            'recommended_count': len(trending_artists) + len(new_artists)
+        })
+
+# Profile Completion Details API
+class ProfileCompletionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        """Get detailed profile completion information"""
+        completion_data = request.user.calculate_profile_completion()
+        return Response(completion_data)
+
 # views.py
 
-from rest_framework import generics, permissions
+from rest_framework import generics, permissions, status
+from rest_framework.views import APIView
 from .models import Follow, Like, Comment
 from .serializers import FollowSerializer, LikeSerializer, CommentSerializer
 
@@ -202,3 +331,82 @@ def logout_view(request):
         return Response({"message": "Logout successful"}, status=200)
     except Exception as e:
         return Response({"error": "Invalid token"}, status=400)
+
+
+
+
+class WishlistView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        wishlist = Wishlist.objects.filter(user=request.user).select_related('artwork')
+        serializer = WishlistSerializer(wishlist, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        artwork_id = request.data.get('artwork_id')
+        if not artwork_id:
+            return Response({"error": "artwork_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            artwork = Artwork.objects.get(id=artwork_id)
+        except Artwork.DoesNotExist:
+            return Response({"error": "Artwork not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        wishlist_item, created = Wishlist.objects.get_or_create(user=request.user, artwork=artwork)
+        if not created:
+            return Response({"message": "Already in wishlist"}, status=status.HTTP_200_OK)
+
+        serializer = WishlistSerializer(wishlist_item)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def delete(self, request):
+        artwork_id = request.data.get('artwork_id')
+        if not artwork_id:
+            return Response({"error": "artwork_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            artwork = Artwork.objects.get(id=artwork_id)
+        except Artwork.DoesNotExist:
+            return Response({"error": "Artwork not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            wishlist_item = Wishlist.objects.get(user=request.user, artwork=artwork)
+            wishlist_item.delete()
+            return Response({"message": "Removed from wishlist"}, status=status.HTTP_204_NO_CONTENT)
+        except Wishlist.DoesNotExist:
+            return Response({"error": "Item not found in wishlist"}, status=status.HTTP_404_NOT_FOUND)
+
+# views.py - Add this view
+class MembershipPurchaseView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        # Check if user is already a member
+        if request.user.is_member:
+            return Response(
+                {'detail': 'You are already a member'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = MembershipPurchaseSerializer(
+            request.user, 
+            data=request.data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            user = serializer.save()
+            
+            return Response({
+                'message': 'Membership purchased successfully!',
+                'user': UserSerializer(user).data,
+                'membership_details': {
+                    'is_member': user.is_member,
+                    'purchase_date': user.membership_purchase_date,
+                    'expiry_date': user.membership_expiry_date,
+                    'amount': user.membership_amount
+                }
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -20,7 +20,7 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('auth/', include('home.urls')),
+    path('', include('home.urls')),  # Remove 'auth/' prefix to make endpoints /api/login/ instead of /auth/api/login/
 ]
 
 # Serve media files during development
