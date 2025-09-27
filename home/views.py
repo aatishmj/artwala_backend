@@ -11,7 +11,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated ,AllowAny
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -335,8 +335,6 @@ def logout_view(request):
 
 
 
-
-
 class WishlistView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -378,3 +376,37 @@ class WishlistView(APIView):
             return Response({"message": "Removed from wishlist"}, status=status.HTTP_204_NO_CONTENT)
         except Wishlist.DoesNotExist:
             return Response({"error": "Item not found in wishlist"}, status=status.HTTP_404_NOT_FOUND)
+
+# views.py - Add this view
+class MembershipPurchaseView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        # Check if user is already a member
+        if request.user.is_member:
+            return Response(
+                {'detail': 'You are already a member'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = MembershipPurchaseSerializer(
+            request.user, 
+            data=request.data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            user = serializer.save()
+            
+            return Response({
+                'message': 'Membership purchased successfully!',
+                'user': UserSerializer(user).data,
+                'membership_details': {
+                    'is_member': user.is_member,
+                    'purchase_date': user.membership_purchase_date,
+                    'expiry_date': user.membership_expiry_date,
+                    'amount': user.membership_amount
+                }
+            }, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

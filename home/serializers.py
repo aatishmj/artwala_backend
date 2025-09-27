@@ -8,6 +8,8 @@ from home.models import User
 
 class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
+    membership_expiry_date = serializers.DateTimeField(read_only=True)
+    membership_purchase_date = serializers.DateTimeField(read_only=True)
     
     class Meta:
         model = User
@@ -15,7 +17,13 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
             'user_type', 'phone', 'profile_image', 'bio', 'location', 'website',
             'instagram_handle', 'twitter_handle', 'is_verified', 'artist_since',
-            'date_joined'
+            'date_joined', 'is_member', 'membership_purchase_date', 'membership_expiry_date',
+            'membership_amount', 'payment_method', 'payment_id'
+        ]
+        read_only_fields = [
+            'id', 'username', 'email', 'user_type', 'date_joined', 'is_verified',
+            'artist_since', 'is_member', 'membership_purchase_date', 'membership_expiry_date',
+            'membership_amount', 'payment_method', 'payment_id'
         ]
 
 
@@ -108,6 +116,7 @@ class CommentSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
     stats = serializers.ReadOnlyField(source='get_stats')
+    membership_expiry_date = serializers.DateTimeField(read_only=True)
     
     class Meta:
         model = User
@@ -115,10 +124,10 @@ class ProfileSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name', 'full_name',
             'user_type', 'phone', 'profile_image', 'bio', 'location', 'website',
             'instagram_handle', 'twitter_handle', 'is_verified', 'artist_since',
-            'date_joined', 'stats'
+            'date_joined', 'stats', 'is_member', 'membership_purchase_date', 
+            'membership_expiry_date', 'membership_amount'
         ]
         read_only_fields = ['id', 'username', 'email', 'user_type', 'date_joined', 'is_verified']
-
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
@@ -151,12 +160,73 @@ class UserStatsSerializer(serializers.ModelSerializer):
     full_name = serializers.ReadOnlyField()
     stats = serializers.ReadOnlyField(source='get_stats')
     profile_completion = serializers.ReadOnlyField(source='calculate_profile_completion')
+    membership_expiry_date = serializers.DateTimeField(read_only=True)
     
     class Meta:
         model = User
         fields = [
             'id', 'username', 'full_name', 'user_type', 'bio', 'location',
-            'profile_image', 'date_joined', 'last_login', 'stats', 'profile_completion'
+            'profile_image', 'date_joined', 'last_login', 'stats', 'profile_completion',
+            'is_member', 'membership_purchase_date', 'membership_expiry_date'
         ]
         read_only_fields = fields  # All fields are read-only for stats endpoint
 
+# serializers.py - Add this serializer
+class MembershipPurchaseSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(max_digits=8, decimal_places=2, write_only=True)
+    payment_method = serializers.CharField(write_only=True)
+    payment_id = serializers.CharField(write_only=True)
+    
+    class Meta:
+        model = User
+        fields = [
+            'phone', 'address_line_1', 'address_line_2', 'city', 'state', 'pincode',
+            'aadhaar_card', 'pan_card', 'bank_name', 'account_number', 'ifsc_code', 
+            'bank_branch', 'account_holder_name', 'birth_date', 'gender',
+            'amount', 'payment_method', 'payment_id'
+        ]
+    
+    def validate(self, data):
+        # Required fields validation
+        required_fields = [
+            'phone', 'address_line_1', 'city', 'state', 'pincode',
+            'bank_name', 'account_number', 'ifsc_code', 'account_holder_name',
+            'birth_date', 'gender'
+        ]
+        
+        for field in required_fields:
+            if not data.get(field):
+                raise serializers.ValidationError(f"{field.replace('_', ' ').title()} is required")
+        
+        return data
+    
+    def update(self, instance, validated_data):
+        # Extract payment data
+        amount = validated_data.pop('amount', 0)
+        payment_method = validated_data.pop('payment_method', '')
+        payment_id = validated_data.pop('payment_id', '')
+        
+        # Update user fields with validated data
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Handle file uploads separately
+        if 'aadhaar_card' in self.context['request'].FILES:
+            instance.aadhaar_card = self.context['request'].FILES['aadhaar_card']
+        if 'pan_card' in self.context['request'].FILES:
+            instance.pan_card = self.context['request'].FILES['pan_card']
+        
+        # Activate membership
+        instance.activate_membership(amount, payment_method, payment_id)
+        
+        return instance
+
+class MembershipSerializer(serializers.ModelSerializer):
+    """Serializer specifically for membership details"""
+    class Meta:
+        model = User
+        fields = [
+            'is_member', 'membership_purchase_date', 'membership_expiry_date',
+            'membership_amount', 'payment_method'
+        ]
+        read_only_fields = fields
