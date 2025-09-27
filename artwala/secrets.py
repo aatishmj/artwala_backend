@@ -1,0 +1,1 @@
+DB_PASSWORD = "Drrgfsytn@12"

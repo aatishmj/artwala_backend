@@ -79,7 +79,7 @@ WSGI_APPLICATION = 'artwala.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/3.1/ref/settings/#databases
-
+'''
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -87,6 +87,7 @@ DATABASES = {
     }
 }
 
+'''
 
 # Password validation
 # https://docs.djangoproject.com/en/3.1/ref/settings/#auth-password-validators
@@ -145,28 +146,20 @@ REST_FRAMEWORK = {
     }
 }
 
+from .secrets import DB_PASSWORD
 
 # Commented out PostgreSQL config
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'art_walaa',
-#         'USER': 'aatish',
-#         'PASSWORD': 'jawalkar1234',
-#         'HOST': 'localhost',
-#         'PORT': '5432',
-#     }
-# }
-
-# SQLite configuration
-import os
-
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
-}
+     'default': {
+         'ENGINE': 'django.db.backends.postgresql',
+         'NAME': 'Artwala_db',
+         'USER': 'Artwala',
+         'PASSWORD': DB_PASSWORD,
+         'HOST': 'localhost',
+         'PORT': '5432',
+     }
+ }
+
 
 
 AUTH_USER_MODEL = 'home.User'
@@ -175,10 +168,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 CORS_ALLOW_ALL_ORIGINS = True
 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
+    "https://artwala.org",
+    "https://www.artwala.org",
+    "http://72.60.200.27:3000",
     "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
 ]
 
 # Email configuration (Gmail SMTP for real emails)
