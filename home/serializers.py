@@ -1,6 +1,8 @@
 # serializers.py
+import json
+from decimal import Decimal
 from rest_framework import serializers
-from .models import User, Artwork, Order
+from .models import User, Artwork, Order, Message
 from django.contrib.auth.password_validation import validate_password
 
 from rest_framework import serializers
@@ -52,14 +54,29 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class ArtworkSerializer(serializers.ModelSerializer):
-    artist = serializers.ReadOnlyField(source='artist.id')
+    artist = UserSerializer(read_only=True)
+    likes_count = serializers.SerializerMethodField()
     description = serializers.CharField(allow_blank=True, required=False)
     price = serializers.DecimalField(max_digits=8, decimal_places=2, required=False)
 
     class Meta:
         model = Artwork
-        fields = ['id','title','description','price','stock','image','video','artist','created_at']
-        read_only_fields = ['id','artist','created_at']
+        fields = ['id','title','description','price','stock','image','video','artist','created_at','category','medium','dimensions','tags','is_available','view_count','likes_count','is_featured']
+        read_only_fields = ['id','artist','created_at','likes_count','view_count','is_featured']
+
+    def to_internal_value(self, data):
+        data = data.copy()
+        if 'price' in data and data['price'] == '':
+            data['price'] = None
+        if 'tags' in data and isinstance(data['tags'], str):
+            try:
+                data['tags'] = json.loads(data['tags'])
+            except json.JSONDecodeError:
+                data['tags'] = []
+        return super().to_internal_value(data)
+
+    def get_likes_count(self, obj):
+        return obj.likes.count()
 
     def validate_price(self, value):
         if value is not None and value < 0:
@@ -81,13 +98,40 @@ class ArtworkSerializer(serializers.ModelSerializer):
         return super().update(instance, validated_data)
 
 class OrderSerializer(serializers.ModelSerializer):
-    artwork = serializers.PrimaryKeyRelatedField(queryset=Artwork.objects.all())
-    quantity = serializers.IntegerField(min_value=1, required=False, default=1)
+    artwork = ArtworkSerializer(read_only=True)
+    artwork_id = serializers.PrimaryKeyRelatedField(
+        queryset=Artwork.objects.all(),
+        source='artwork',
+        write_only=True
+    )
+    buyer = UserSerializer(read_only=True)
+    transaction = serializers.SerializerMethodField()
+    commission = serializers.SerializerMethodField()
+    net_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
-        fields = ['id', 'artwork', 'buyer', 'quantity', 'status', 'created_at']
-        read_only_fields = ['id', 'buyer', 'status', 'created_at']
+        fields = ['id', 'artwork', 'artwork_id', 'buyer', 'quantity', 'status', 'created_at', 'transaction', 'commission', 'net_amount']
+
+    def get_transaction(self, obj):
+        try:
+            transaction = obj.transaction
+            return {
+                'amount': transaction.amount,
+                'payment_status': transaction.payment_status,
+                'payment_method': transaction.payment_method,
+                'timestamp': transaction.timestamp
+            }
+        except:
+            return None
+
+    def get_commission(self, obj):
+        amount = obj.artwork.price * obj.quantity
+        return amount * Decimal('0.1')  # 10% commission
+
+    def get_net_amount(self, obj):
+        amount = obj.artwork.price * obj.quantity
+        return amount - (amount * Decimal('0.1'))
 # serializers.py
 
 from rest_framework import serializers
@@ -141,6 +185,16 @@ class ProfileImageSerializer(serializers.ModelSerializer):
         model = User
         fields = ['profile_image']
 
+    def validate_profile_image(self, value):
+        if value:
+            # Check file size (max 5MB)
+            if value.size > 5 * 1024 * 1024:
+                raise serializers.ValidationError("Image file too large ( > 5MB )")
+            # Check file type
+            if not value.content_type in ['image/jpeg', 'image/png', 'image/gif', 'image/webp']:
+                raise serializers.ValidationError("Unsupported file type. Use JPEG, PNG, GIF, or WebP.")
+        return value
+
 
 
 #---------------------Wishlist---------------------------------
@@ -170,6 +224,9 @@ class UserStatsSerializer(serializers.ModelSerializer):
             'is_member', 'membership_purchase_date', 'membership_expiry_date'
         ]
         read_only_fields = fields  # All fields are read-only for stats endpoint
+class MessageSerializer(serializers.ModelSerializer):
+    sender = UserSerializer(read_only=True)
+    recipient = UserSerializer(read_only=True)
 
 # serializers.py - Add this serializer
 class MembershipPurchaseSerializer(serializers.ModelSerializer):
@@ -230,3 +287,31 @@ class MembershipSerializer(serializers.ModelSerializer):
             'membership_amount', 'payment_method'
         ]
         read_only_fields = fields
+    class Meta:
+        model = Message
+        fields = ["id", "sender", "recipient", "content", "timestamp", "is_read"]
+        read_only_fields = ["id", "timestamp"]
+
+# Password Reset Serializers
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        try:
+            user = User.objects.get(email=value, is_active=True)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("No active account found with this email address.")
+        return value
+
+class ValidateResetSerializer(serializers.Serializer):
+    token = serializers.CharField()
+
+class ResetPasswordSerializer(serializers.Serializer):
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
+    password_confirm = serializers.CharField(write_only=True)
+
+    def validate(self, data):
+        if data['new_password'] != data['password_confirm']:
+            raise serializers.ValidationError("Passwords don't match")
+        return data

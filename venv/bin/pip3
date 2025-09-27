@@ -1,4 +1,4 @@
-#!/home/aatish/Desktop/projects/artwala/backend/artwala_backend/venv/bin/python3
+#!/Users/tanmaykale/Desktop/Artwala/backend/artwala_backend/venv/bin/python3.12
 # -*- coding: utf-8 -*-
 import re
 import sys
