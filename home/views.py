@@ -56,7 +56,15 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         except User.DoesNotExist:
             raise serializers.ValidationError("Invalid credentials")
 
-        return super().validate(attrs)
+        # Get the token data
+        data = super().validate(attrs)
+        
+        # Add user data to response
+        user_serializer = UserSerializer(self.user)
+        data['user'] = user_serializer.data
+        data['message'] = 'Login successful'
+        
+        return data
 
 # replace view
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -98,8 +106,20 @@ class RegisterView(generics.CreateAPIView):
         print("Incoming data:", request.data)  # 🔍 Log data
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
-            self.perform_create(serializer)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            user = serializer.save()
+            
+            # Generate JWT tokens for the new user
+            refresh = RefreshToken.for_user(user)
+            access = refresh.access_token
+            
+            # Return user data with tokens
+            user_serializer = UserSerializer(user)
+            return Response({
+                'user': user_serializer.data,
+                'access': str(access),
+                'refresh': str(refresh),
+                'message': 'Registration successful'
+            }, status=status.HTTP_201_CREATED)
         print("Serializer errors:", serializer.errors)  # 🔍 Log errors
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
