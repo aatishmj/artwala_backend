@@ -11,7 +11,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated ,AllowAny
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -240,6 +240,9 @@ class ArtistArtworksListView(generics.ListAPIView):
     def get_queryset(self):
         return Artwork.objects.filter(artist=self.request.user).select_related('artist').annotate(likes_count=Count('likes')).order_by('-created_at')
 
+        # Ensure the authenticated user is set as the buyer
+        serializer.save(buyer=self.request.user)
+
 
 # Profile Views
 class ProfileView(APIView):
@@ -414,8 +417,6 @@ def logout_view(request):
         return Response({"message": "Logout successful"}, status=200)
     except Exception as e:
         return Response({"error": "Invalid token"}, status=400)
-
-
 
 
 
@@ -595,4 +596,37 @@ class ResetPasswordView(APIView):
                 }, status=status.HTTP_200_OK)
             except PasswordResetToken.DoesNotExist:
                 return Response({'message': 'Invalid token.'}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+# views.py - Add this view
+class MembershipPurchaseView(APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def post(self, request):
+        # Check if user is already a member
+        if request.user.is_member:
+            return Response(
+                {'detail': 'You are already a member'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        serializer = MembershipPurchaseSerializer(
+            request.user, 
+            data=request.data,
+            context={'request': request}
+        )
+        
+        if serializer.is_valid():
+            user = serializer.save()
+            
+            return Response({
+                'message': 'Membership purchased successfully!',
+                'user': UserSerializer(user).data,
+                'membership_details': {
+                    'is_member': user.is_member,
+                    'purchase_date': user.membership_purchase_date,
+                    'expiry_date': user.membership_expiry_date,
+                    'amount': user.membership_amount
+                }
+            }, status=status.HTTP_200_OK)
+        
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

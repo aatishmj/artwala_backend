@@ -189,3 +189,4 @@ EMAIL_USE_TLS = True
 EMAIL_HOST_USER = 'tanmaykaletdk@gmail.com'
 EMAIL_HOST_PASSWORD = 'zrjs ujfb lfqn roov'
 DEFAULT_FROM_EMAIL = 'tanmaykaletdk@gmail.com'
+APPEND_SLASH=False

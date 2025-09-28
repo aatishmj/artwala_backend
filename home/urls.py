@@ -31,6 +31,8 @@ urlpatterns = [
     
     # Artist Recommendations
     path('api/artists/recommendations/', ArtistRecommendationsView.as_view(), name='artist_recommendations'),
+
+    
     
     # Legacy profile endpoint (keeping for compatibility)
     path('api/user/profile/', UserProfileView.as_view(), name='user_profile_legacy'),
@@ -53,4 +55,5 @@ urlpatterns = [
     path('api/messages/detail/<int:pk>/', MessageDetailView.as_view(), name='message_detail'),
     path('api/following/', FollowingView.as_view(), name='following'),
     path('api/categories/', CategoriesView.as_view(), name='categories'),
+    path('api/membership/purchase', MembershipPurchaseView.as_view(), name='purchase_membership'),
 ]
