@@ -12,6 +12,14 @@ https://docs.djangoproject.com/en/3.1/ref/settings/
 
 from pathlib import Path
 import os
+from datetime import timedelta
+
+# Optional .env support (development/local). In production you can rely on real env vars.
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    pass
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,13 +28,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/3.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'i)sy68u8#m^ug2zc=q0nd3=btps77$j-u*^smr9^c#1$+ee0gu'
+# Environment (development | production)
+DJANGO_ENV = os.getenv('DJANGO_ENV', 'development').lower()
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# SECRET KEY
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'DEV-INSECURE-ONLY-CHANGE-ME')
 
-ALLOWED_HOSTS = ['*']
+# Debug flag (never True in production unless explicitly forced)
+DEBUG = (DJANGO_ENV != 'production') and os.getenv('DEBUG', 'false').lower() in ('1', 'true', 'yes') or False
+
+# Allowed Hosts
+if DJANGO_ENV == 'production':
+    raw_hosts = os.getenv('ALLOWED_HOSTS', '')
+    ALLOWED_HOSTS = [h.strip() for h in raw_hosts.split(',') if h.strip()] or ['artwala.org', 'www.artwala.org']
+else:
+    ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',') + ['*']
 
 
 # Application definition
@@ -39,6 +55,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'whitenoise.runserver_nostatic',  # ensures whitenoise during runserver
     'rest_framework',
     'rest_framework_simplejwt.token_blacklist',
     'home',
@@ -47,7 +64,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',  # static files efficient serving
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -76,17 +93,67 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'artwala.wsgi.application'
 
+# (Optional) Future: ASGI for websockets / realtime
+# ASGI_APPLICATION = 'artwala.asgi.application'
+
 
 # Database
 # https://docs.djangoproject.com/en/3.1/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if DJANGO_ENV == 'production':
+    # Prefer DATABASE_URL if provided (e.g. on platforms like Render/Heroku)
+    DATABASE_URL = os.getenv('DATABASE_URL')
+    if DATABASE_URL:
+        # Minimal parser (could use dj-database-url if added later)
+        # Expect format: postgres://USER:PASSWORD@HOST:PORT/NAME
+        try:
+            import re
+            pattern = r'postgres(?:ql)?://(?P<user>[^:]+):(?P<pw>[^@]+)@(?P<host>[^:]+):(?P<port>\d+)/(?P<name>[^\s]+)'
+            m = re.match(pattern, DATABASE_URL)
+            if not m:
+                raise ValueError('Invalid DATABASE_URL format')
+            db_dict = m.groupdict()
+            DATABASES = {
+                'default': {
+                    'ENGINE': 'django.db.backends.postgresql',
+                    'NAME': db_dict['name'],
+                    'USER': db_dict['user'],
+                    'PASSWORD': db_dict['pw'],
+                    'HOST': db_dict['host'],
+                    'PORT': db_dict['port'],
+                }
+            }
+        except Exception:
+            # Fallback to discrete vars if parsing fails
+            DATABASES = {
+                'default': {
+                    'ENGINE': 'django.db.backends.postgresql',
+                    'NAME': os.getenv('POSTGRES_DB', 'artwala'),
+                    'USER': os.getenv('POSTGRES_USER', 'postgres'),
+                    'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
+                    'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+                    'PORT': os.getenv('POSTGRES_PORT', '5432'),
+                }
+            }
+    else:
+        DATABASES = {
+            'default': {
+                'ENGINE': 'django.db.backends.postgresql',
+                'NAME': os.getenv('POSTGRES_DB', 'artwala'),
+                'USER': os.getenv('POSTGRES_USER', 'postgres'),
+                'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
+                'HOST': os.getenv('POSTGRES_HOST', 'localhost'),
+                'PORT': os.getenv('POSTGRES_PORT', '5432'),
+            }
+        }
+else:
+    # Development uses sqlite by default
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
     }
-}
-
 
 # Password validation
 # https://docs.djangoproject.com/en/3.1/ref/settings/#auth-password-validators
@@ -125,6 +192,10 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/3.1/howto/static-files/
 
 STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Whitenoise static file compression & caching
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Media files (uploads)
 MEDIA_URL = '/media/'
@@ -140,53 +211,111 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle'
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '5/hour',
-        'user': '100/hour'
+        'anon': os.getenv('THROTTLE_ANON_RATE', '20/hour') if DJANGO_ENV == 'production' else '100/hour',
+        'user': os.getenv('THROTTLE_USER_RATE', '200/hour') if DJANGO_ENV == 'production' else '1000/hour'
     }
 }
 
 
-# Commented out PostgreSQL config
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'art_walaa',
-#         'USER': 'aatish',
-#         'PASSWORD': 'jawalkar1234',
-#         'HOST': 'localhost',
-#         'PORT': '5432',
-#     }
-# }
 
-# SQLite configuration
-import os
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'db.sqlite3'),
-    }
-}
 
 
 AUTH_USER_MODEL = 'home.User'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True
+if DJANGO_ENV == 'production':
+    CORS_ALLOW_ALL_ORIGINS = False
+    raw_cors = os.getenv('CORS_ALLOWED_ORIGINS', '')
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors.split(',') if o.strip()] or [
+        'https://artwala.org', 'https://www.artwala.org'
+    ]
+else:
+    CORS_ALLOW_ALL_ORIGINS = True
+    CORS_ALLOWED_ORIGINS = [
+        'http://localhost:3000',
+        'http://127.0.0.1:3000',
+        'http://localhost:3001',
+        'http://127.0.0.1:3001'
+    ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-]
+# CSRF trusted origins (mainly when served behind a domain / proxy)
+raw_csrf = os.getenv('CSRF_TRUSTED_ORIGINS', '')
+if raw_csrf:
+    CSRF_TRUSTED_ORIGINS = [c.strip() for c in raw_csrf.split(',') if c.strip()]
 
 # Email configuration (Gmail SMTP for real emails)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'tanmaykaletdk@gmail.com'
-EMAIL_HOST_PASSWORD = 'zrjs ujfb lfqn roov'
-DEFAULT_FROM_EMAIL = 'tanmaykaletdk@gmail.com'
-APPEND_SLASH=False
+EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'true').lower() in ('1', 'true', 'yes')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'no-reply@artwala.local')
+APPEND_SLASH = False
+
+# JWT Settings (optional consolidation)
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('JWT_ACCESS_MINUTES', '60'))),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=int(os.getenv('JWT_REFRESH_DAYS', '7'))),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+}
+
+# Production Security Settings
+if DJANGO_ENV == 'production':
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = int(os.getenv('SECURE_HSTS_SECONDS', '31536000'))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    X_FRAME_OPTIONS = 'DENY'
+    REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+# Logging
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'standard': {
+            'format': '[%(asctime)s] %(levelname)s %(name)s:%(lineno)d %(message)s'
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'standard',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': LOG_LEVEL,
+    },
+}
+
+if DJANGO_ENV == 'production':
+    from logging.handlers import RotatingFileHandler  # noqa: F401 (ensure availability)
+    logs_dir = BASE_DIR / 'logs'
+    logs_dir.mkdir(exist_ok=True)
+    LOGGING['handlers']['error_file'] = {
+        'class': 'logging.handlers.RotatingFileHandler',
+        'filename': str(logs_dir / 'django.error.log'),
+        'maxBytes': 5 * 1024 * 1024,
+        'backupCount': 5,
+        'formatter': 'standard',
+        'level': 'ERROR'
+    }
+    LOGGING['loggers'] = {
+        'django.request': {
+            'handlers': ['error_file', 'console'],
+            'level': 'ERROR',
+            'propagate': False
+        }
+    }
+
+# Convenience print (can remove later)
+print(f"[settings] ENV={DJANGO_ENV} DEBUG={DEBUG} DB_ENGINE={DATABASES['default']['ENGINE']}")

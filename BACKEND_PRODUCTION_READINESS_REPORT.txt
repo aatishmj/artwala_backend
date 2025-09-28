@@ -1,0 +1,137 @@
+ArtWala Backend Production Readiness Report
+Generated: 2025-09-28
+
+Scope
+This report reviews the current Django backend (artwala_backend) for production readiness and lists concrete recommended changes. Key areas: security, configuration management, dependencies, architecture, performance, logging/monitoring, media & static file handling, database, email, API hardening, and operational concerns.
+
+Summary Risk Assessment (before changes applied)
+1. Secrets Exposure: SECRET_KEY and Gmail app password are hard‑coded in settings.py (Critical)
+2. Single Monolithic settings.py without environment separation (High)
+3. DEBUG=True with ALLOWED_HOSTS=['*'] in repository (High)
+4. CORS_ALLOW_ALL_ORIGINS=True (High) – enables any origin (risk of token leakage with some browsers)
+5. No security headers / HSTS / SSL redirect toggles for production (Medium→High)
+6. Unpinned dependency versions & outdated Django 3.1.12 (End of life) (High). Recommended upgrade path: 3.2 LTS → 4.2 LTS.
+7. No runtime logging configuration (Medium)
+8. No rate limiting beyond basic DRF anon/user throttles (Low→Medium; improvement optional)
+9. Password reset tokens stored but no automatic cleanup (Low)
+10. Email sending uses raw Gmail SMTP (deliverability & throttling risk) (Medium). Recommend transactional provider (Postmark, SendGrid, SES) later.
+11. Media storage local filesystem (OK for dev; for production use S3 / DO Spaces / Azure Blob) (Medium for scalability)
+12. No health check endpoint or readiness probe (Low)
+13. No Celery / async queue for email & heavy tasks (Future optimization)
+14. No explicit database connection pooling settings (Low; can rely on Postgres defaults initially)
+
+Key Improvements Implemented Now
+✔ Environment–aware dynamic settings (DJANGO_ENV=development|production)
+✔ Secrets & credentials loaded from .env (python-dotenv)
+✔ Removed hard‑coded SECRET_KEY / email password
+✔ Added production security settings (HSTS, SSL redirect, secure cookies, content type nosniff, X-Frame, referrer policy)
+✔ Conditional CORS: permissive in development, restricted in production via CORS_ALLOWED_ORIGINS env
+✔ Dynamic database selection: SQLite (dev) vs Postgres (prod) via POSTGRES_* variables or DATABASE_URL
+✔ Added Whitenoise for static file serving (short-term; can move to CDN later)
+✔ Added structured LOGGING config with console handler & error file handler (rotating) when in production
+✔ Added .env.example template
+✔ Added dependencies: python-dotenv, psycopg2-binary, whitenoise
+
+Recommended Follow-Up (Not implemented yet – larger scope / optional)
+1. Framework Upgrade: Plan upgrade to Django 3.2.x LTS then 4.2.x LTS (run test suite, address deprecated APIs). 
+2. Dependency Pinning: Freeze versions into a new requirements.txt with hashes (pip-tools or pip-compile) for reproducibility.
+3. ASGI & Real-Time: If chat / notifications expand, introduce Django Channels or a separate websocket service.
+4. Task Queue: Introduce Celery + Redis for email sending, membership expiry checks, analytics, cleanups.
+5. Media Storage: Migrate media to object storage (S3-compatible) + use signed URLs for private docs (Aadhaar/PAN) to avoid direct public access; implement access control layer.
+6. Sensitive Document Handling: Store ID documents encrypted or behind private storage bucket; never serve directly from public media root.
+7. Password Reset Hardening: Add token rotation on use & periodic cleanup cron; optionally move to Django’s built-in PasswordResetTokenGenerator for standardization.
+8. API Rate Limiting: Fine-tune DRF throttle classes (e.g., distinct endpoints) or integrate a gateway (NGINX / Cloudflare) with per-IP limits.
+9. Observability: Add Sentry for error tracking, Prometheus metrics endpoint, structured JSON logs for log aggregation (ELK / OpenSearch).
+10. Health/Readiness Endpoints: /healthz (DB + cache ping) and /readiness for orchestration.
+11. Caching Layer: Introduce Redis for frequently accessed read endpoints (artwork lists, categories, recommendations) and per-user dashboard stats.
+12. DB Index Review: Ensure indexes on foreign keys (already automatic) plus composite indexes where queries filter (e.g., (artist, created_at) on Artwork if listing often).
+13. Validation & Serialization: Add explicit pagination (PageNumberPagination / LimitOffsetPagination) and restrict large payload uploads.
+14. Security Headers at Reverse Proxy: Complement Django headers with NGINX (Content-Security-Policy, Permissions-Policy, etc.).
+15. Continuous Integration: Add GitHub Actions workflow for tests, migrations check, security scanning (bandit, safety).
+
+Environment Variables (Current Expectation)
+Mandatory in production:
+  DJANGO_ENV=production
+  DJANGO_SECRET_KEY=your-strong-secret
+  ALLOWED_HOSTS=artwala.org,www.artwala.org
+  CORS_ALLOWED_ORIGINS=https://artwala.org,https://www.artwala.org
+Database (choose either DATABASE_URL or discrete vars):
+  DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DBNAME
+  or
+  POSTGRES_DB=Artwala_db
+  POSTGRES_USER=Artwala
+  POSTGRES_PASSWORD=***
+  POSTGRES_HOST=localhost
+  POSTGRES_PORT=5432
+Email:
+  EMAIL_HOST=smtp.gmail.com
+  EMAIL_PORT=587
+  EMAIL_HOST_USER=you@example.com
+  EMAIL_HOST_PASSWORD=app-specific-password
+  DEFAULT_FROM_EMAIL=Artwala <no-reply@artwala.org>
+Optional:
+  LOG_LEVEL=INFO
+  CSRF_TRUSTED_ORIGINS=https://artwala.org,https://www.artwala.org
+  EXTRA_ALLOWED_HOSTS=api.artwala.org
+
+Security Settings (Enabled when DJANGO_ENV=production)
+  DEBUG=False
+  SECURE_SSL_REDIRECT=True
+  SESSION_COOKIE_SECURE=True
+  CSRF_COOKIE_SECURE=True
+  SECURE_HSTS_SECONDS=31536000 (1 year, preload)
+  SECURE_HSTS_INCLUDE_SUBDOMAINS=True
+  SECURE_HSTS_PRELOAD=True
+  SECURE_CONTENT_TYPE_NOSNIFF=True
+  SECURE_BROWSER_XSS_FILTER=True
+  X_FRAME_OPTIONS=DENY
+  REFERRER_POLICY=strict-origin-when-cross-origin
+
+Logging (Production)
+  - Console: structured simple format
+  - File: logs/django.error.log (RotatingFileHandler 5 MB * 5) – ensure directory writable / externalize to volume
+
+Static & Media
+  STATIC_ROOT set to BASE_DIR / 'staticfiles'
+  Whitenoise used for simple deployment; long term move static to CDN with hashed filenames (collectstatic) and set far future cache headers.
+  MEDIA_ROOT unchanged short term; plan migration to object storage.
+
+Model / Data Observations
+  User model: large profile fields; future refactor to separate ArtistProfile reduces table width & improves query performance.
+  JSONField for Artwork.tags acceptable; consider tagging table if advanced filtering needed.
+  Membership and user.is_member duplication – ensure denormalization consistency (signals or periodic reconciliation).
+  Wishlist unique_together OK; consider adding index on (user, added_on) for retrieval ordering.
+  Message model fine; for scale, index (sender, recipient, timestamp) and consider partitioning or archiving.
+
+Password Reset Tokens Table
+  Add periodic cleanup of expired tokens (management command + cron / Celery beat) to prevent growth.
+  Add index on (token_hash) already unique; current composite index (user, expires_at) fine.
+
+Testing Recommendations
+  Add tests for: auth (register/login), artwork CRUD permissions, wishlist, password reset flow, membership purchase.
+
+Deployment Checklist (Post Changes)
+  1. Create .env from example with production values
+  2. Ensure DEBUG not set / DJANGO_ENV=production
+  3. Run: python manage.py check --deploy (resolve any warnings)
+  4. Run migrations against Postgres
+  5. Run collectstatic
+  6. Start with gunicorn/uvicorn under process manager (systemd / supervisor) behind NGINX with HTTPS (Let’s Encrypt)
+  7. Configure log rotation if external (if not letting Django rotate)
+  8. Set up monitoring & uptime alerting
+
+How to Run Locally (Development)
+  1. Copy .env.example to .env (leave defaults or minimal)
+  2. python -m venv venv && venv\Scripts\activate (Windows)
+  3. pip install -r requirements.txt
+  4. python manage.py migrate
+  5. python manage.py runserver
+
+Next Steps (Suggested Priorities)
+  P1: Add automated tests & upgrade Django (3.2 LTS)
+  P2: Move media & sensitive documents off local FS
+  P3: Introduce Sentry + metrics
+  P4: Celery + Redis for async tasks
+  P5: Security enhancements (CSP, Permissions-Policy) via NGINX
+
+End of Report
