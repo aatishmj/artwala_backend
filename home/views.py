@@ -135,6 +135,7 @@ class ArtworkListCreateView(generics.ListCreateAPIView):
     queryset = Artwork.objects.all().order_by('-created_at')
     serializer_class = ArtworkSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    throttle_classes = []  # Disable throttling for this view
 
     def get_queryset(self):
         qs = super().get_queryset()
